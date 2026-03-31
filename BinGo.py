@@ -1,5 +1,6 @@
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
+from telegram import ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from datetime import datetime
 
@@ -181,48 +182,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data["order_type"] = text
         context.user_data["stage"] = "order_description"
-        await update.message.reply_text(TEXTS[lang]["order_description"], reply_markup=None)
+        await update.message.reply_text(TEXTS[lang]["order_description"], reply_markup=ReplyKeyboardRemove())
 
     # --- Описание заказа ---
-    if stage == "order_description":
+    elif stage == "order_description":
         context.user_data["description"] = text
         context.user_data["stage"] = "order_address"
-        await update.message.reply_text(TEXTS[lang]["order_address"])
+        await update.message.reply_text(TEXTS[lang]["order_address"], reply_markup=ReplyKeyboardRemove())
         return
 
     # --- Адрес ---
-    if stage == "order_address":
+    elif stage == "order_address":
         context.user_data["address"] = text
         context.user_data["stage"] = "order_time"
-        await update.message.reply_text(TEXTS[lang]["order_time"])
+        await update.message.reply_text(TEXTS[lang]["order_time"], reply_markup=ReplyKeyboardRemove())
         return
 
     # --- Время ---
-    if stage == "order_time":
+    elif stage == "order_time":
         if text.lower() in ["как можно скорее", "as soon as possible"]:
             context.user_data["time"] = text
         else:
             context.user_data["time"] = text
         context.user_data["stage"] = "order_contact_name"
-        await update.message.reply_text(TEXTS[lang]["contact_name"])
+        await update.message.reply_text(TEXTS[lang]["contact_name"], reply_markup=ReplyKeyboardRemove())
         return
 
     # --- Имя ---
-    if stage == "order_contact_name":
+    elif stage == "order_contact_name":
         context.user_data["name"] = text
         context.user_data["stage"] = "order_contact_phone"
-        await update.message.reply_text(TEXTS[lang]["contact_phone"])
+        await update.message.reply_text(TEXTS[lang]["contact_phone"], reply_markup=ReplyKeyboardRemove())
         return
 
     # --- Телефон ---
-    if stage == "order_contact_phone":
+    elif stage == "order_contact_phone":
         context.user_data["phone"] = text
         context.user_data["stage"] = "order_comment"
-        await update.message.reply_text(TEXTS[lang]["comment"])
+        await update.message.reply_text(TEXTS[lang]["comment"], reply_markup=ReplyKeyboardRemove())
         return
 
     # --- Комментарий ---
-    if stage == "order_comment":
+    elif stage == "order_comment":
         context.user_data["comment"] = text
         # --- Подтверждение ---
         order_summary = (
@@ -236,8 +237,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💬 Комментарий: {context.user_data['comment']}"
         )
         context.user_data["stage"] = "order_confirm"
-        await update.message.reply_text(order_summary, reply_markup=confirm_markup)
-        return
+        markup = confirm_markup_ru if lang == "Русский" else confirm_markup_en
+        await update.message.reply_text(order_summary, reply_markup=markup)
 
     # --- Подтверждение заказа ---
     if stage == "order_confirm":
@@ -266,8 +267,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             order_id = cursor.lastrowid
 
             # --- Уведомление заказчику ---
-            await update.message.reply_text(TEXTS[lang]["order_accepted"].format(id=order_id), reply_markup=main_menu_markup)
+            menu_markup = main_menu_markup_ru if lang == "Русский" else main_menu_markup_en
+            await update.message.reply_text(TEXTS[lang]["order_accepted"].format(id=order_id), reply_markup=menu_markup)
 
+            context.user_data["stage"] = "main_menu"
             # --- Уведомление админу ---
             admin_message = (
                 f"📦 Новый заказ #{order_id}\n\n"
