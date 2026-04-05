@@ -35,9 +35,9 @@ order_types_markup_ee = ReplyKeyboardMarkup(order_types_keyboard_ee, resize_keyb
 order_types_markup_ru = ReplyKeyboardMarkup(order_types_keyboard_ru, resize_keyboard=True)
 order_types_markup_en = ReplyKeyboardMarkup(order_types_keyboard_en, resize_keyboard=True)
 
-confirm_keyboard_ru = [["✅ Подтвердить", "✏ Изменить", "❌ Отменить"]]
-confirm_keyboard_en = [["✅ Confirm", "✏ Change", "❌ Cancel"]]
-confirm_keyboard_ee = [["✅ Kinnita", "✏ Muuda", "❌ Tühista"]]
+confirm_keyboard_ru = [["✅ Подтвердить", "❌ Отменить"]]
+confirm_keyboard_en = [["✅ Confirm", "❌ Cancel"]]
+confirm_keyboard_ee = [["✅ Kinnita", "❌ Tühista"]]
 
 confirm_markup_ee = ReplyKeyboardMarkup(confirm_keyboard_ee, resize_keyboard=True)
 confirm_markup_ru = ReplyKeyboardMarkup(confirm_keyboard_ru, resize_keyboard=True)
@@ -98,12 +98,13 @@ RECEIPT_LABELS = {
 
 # Цены на позиции Urban Buns
 MENU_PRICES_NAL = {
-    "Onion King": 10.0,
-    "Burning Smash": 10.0,
-    "Truhfvel God": 10.0,
-    "Gorgonzola Mess": 10.0,
-    "Smoky Bastad": 10.0,
-    "BinGo Set": 12.0,
+    "Onion King": 12.0,
+    "Burning Smash": 12.0,
+    "Truhfvel God": 12.0,
+    "Gorgonzola Mess": 12.0,
+    "Smoky Bastad": 12.0,
+    "BinGo SPECIAL SET A": 15.0,
+    "BinGo SPECIAL SET B": 17.0,
     "Bataat": 4.5,
     "Fries": 3.5,
     "Cola": 2.5,
@@ -116,7 +117,8 @@ MENU_PRICES_BANK = {
     "Truhfvel God": 12.0,
     "Gorgonzola Mess": 12.0,
     "Smoky Bastad": 12.0,
-    "BinGo Set": 12.0,
+    "BinGo SPECIAL SET A": 15.0,
+    "BinGo SPECIAL SET B": 17.0,
     "Bataat": 4.5,
     "Fries": 3.5,
     "Cola": 2.5,
@@ -493,7 +495,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Вы ничего не выбрали!")
                 return
 
-            final_list = ", ".join(context.user_data["cart"])
+            # ИСПРАВЛЕНИЕ ОШИБКИ: 
+            # Собираем список строк из словарей перед .join()
+            cart_display_names = [item["display"] for item in context.user_data["cart"]]
+            final_list = ", ".join(cart_display_names)
+            
             context.user_data["description"] = f"Urban Buns: {final_list}"
             context.user_data["stage"] = "order_address"
             await update.message.reply_text(TEXTS[lang]["order_address"], reply_markup=ReplyKeyboardRemove())
@@ -506,7 +512,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(TEXTS[lang]["drink_menu"], reply_markup=markup, parse_mode="HTML")
             return
 
-        item_name = burger_map.get(text, text)
+        item_name = burger_map.get(text)
+        if not item_name:
+            await update.message.reply_text("Выберите позицию из меню")
+            return
 
         # --- Обработка сетов ---
         if item_name in ["BinGo SPECIAL SET A", "BinGo SPECIAL SET B"]:
@@ -524,20 +533,70 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                          "Bataat", "Fries", "Cola", "Cola Zero", "Lipton"]:
             if "cart" not in context.user_data:
                 context.user_data["cart"] = []
-            context.user_data["cart"].append(item_name)
+            
+            # ВМЕСТО context.user_data["cart"].append(item_name)
+            # ПИШЕМ ТАК:
+            cart_item = {"display": item_name, "price_key": item_name}
+            context.user_data["cart"].append(cart_item)
 
-            item_count = context.user_data["cart"].count(item_name)
-            current_cart_text = "\n".join([f"• {i}" for i in context.user_data["cart"]])
+            # Для подсчета количества (item_count) теперь нужно считать по price_key
+            item_count = sum(1 for i in context.user_data["cart"] if i["price_key"] == item_name)
+            
+            # Для отображения корзины вытаскиваем поле "display"
+            current_cart_text = "\n".join([f"• {i['display']}" for i in context.user_data["cart"]])
 
             added_msg = {
                 "Русский": f"✅ Добавлено: {item_name} (в корзине: {item_count} шт.)\n\n<b>Ваш заказ:</b>\n{current_cart_text}",
                 "English": f"✅ Added: {item_name} (in cart: {item_count} pcs)\n\n<b>Your order:</b>\n{current_cart_text}",
                 "Eesti": f"✅ Lisatud: {item_name} (ostukorvis: {item_count} tk)\n\n<b>Sinu tellimus:</b>\n{current_cart_text}"
             }
-
             await update.message.reply_text(added_msg[lang], parse_mode="HTML")
             return
+    elif stage == "urban_drinks_menu":
+        # Кнопка назад
+        back_triggers = ["⬅️ Назад", "⬅️ Back", "⬅️ Tagasi"]
+        if text in back_triggers:
+            context.user_data["stage"] = "urban_sub_menu"
+            markup = urban_sub_markup_ru if lang=="Русский" else urban_sub_markup_en if lang=="English" else urban_sub_markup_ee
+            await update.message.reply_text("Вы вернулись в меню:", reply_markup=markup)
+            return
 
+        # Словарь напитков (по цифрам и названиям)
+        drink_map = {
+            "1": "Cola",
+            "2": "Cola Zero",
+            "3": "Lipton",
+            "cola": "Cola",
+            "cola zero": "Cola Zero",
+            "lipton": "Lipton"
+        }
+
+        item_name = drink_map.get(text.lower())
+        if not item_name:
+            await update.message.reply_text("Выберите напиток из меню")
+            return
+
+        # --- Добавляем напиток в корзину ---
+        if "cart" not in context.user_data:
+            context.user_data["cart"] = []
+
+        # Опять же, создаем словарь
+        cart_item = {"display": item_name, "price_key": item_name}
+        context.user_data["cart"].append(cart_item)
+
+        # Собираем текст для вывода через i['display']
+        current_cart_text = "\n".join([f"• {i['display']}" for i in context.user_data["cart"]])
+
+        # Показываем обновлённую корзину и возвращаем в саб-меню
+        markup = urban_sub_markup_ru if lang=="Русский" else urban_sub_markup_en if lang=="English" else urban_sub_markup_ee
+        await update.message.reply_text(
+            f"✅ Добавлено: {item_name}\n\n<b>Ваш заказ:</b>\n{current_cart_text}",
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
+
+        context.user_data["stage"] = "urban_sub_menu"
+        return
     # --- Выбор бургера для сета ---
     elif stage == "choose_set_burger":
         context.user_data["current_set"]["burger"] = text
@@ -552,60 +611,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["current_set"]["drink"] = text
         current_set = context.user_data.pop("current_set")
 
-        side = "Fries" if "A" in current_set["set"] else "Bataat"
-        cart_item = f"{current_set['set']}: {current_set['burger']} + {side} + {current_set['drink']}"
+        set_key = current_set['set'] # "BinGo SPECIAL SET A" или B
+        side = "Fries" if "A" in set_key else "Bataat"
+        
+        # Текст для отображения
+        display_text = f"{set_key}: {current_set['burger']} + {side} + {current_set['drink']}"
+
+        # Создаем объект товара
+        cart_item = {
+            "display": display_text,
+            "price_key": set_key  # Сохраняем ключ, по которому будем искать цену
+        }
 
         if "cart" not in context.user_data:
             context.user_data["cart"] = []
+
         context.user_data["cart"].append(cart_item)
 
-        current_cart_text = "\n".join([f"• {i}" for i in context.user_data["cart"]])
+        # Для вывода списка используем поле "display"
+        current_cart_text = "\n".join([f"• {i['display']}" for i in context.user_data["cart"]])
+
         await update.message.reply_text(
-            f"✅ {cart_item} добавлен в корзину.\n\n<b>Ваш заказ:</b>\n{current_cart_text}",
+            f"✅ {display_text} добавлен в корзину.\n\n<b>Ваш заказ:</b>\n{current_cart_text}",
             reply_markup=urban_sub_markup_ru if lang=="Русский" else urban_sub_markup_en if lang=="English" else urban_sub_markup_ee,
             parse_mode="HTML"
         )
 
         context.user_data["stage"] = "urban_sub_menu"
-
-        # Если нажимают на кнопки товаров
-        if "cart" not in context.user_data:
-            context.user_data["cart"] = []
-        
-        context.user_data["cart"].append(text)
-        
-        # Считаем количество именно этого товара
-        item_count = context.user_data["cart"].count(text)
-        
-        # Список всей корзины для наглядности
-        current_cart_text = "\n".join([f"• {item}" for item in context.user_data["cart"]])
-        
-        added_msg = {
-            "Русский": f"✅ Добавлено: {text} (в корзине: {item_count} шт.)\n\n<b>Ваш заказ:</b>\n{current_cart_text}",
-            "English": f"✅ Added: {text} (in cart: {item_count} pcs)\n\n<b>Your order:</b>\n{current_cart_text}",
-            "Eesti": f"✅ Lisatud: {text} (ostukorvis: {item_count} tk)\n\n<b>Sinu tellimus:</b>\n{current_cart_text}"
-        }
-
-        await update.message.reply_text(added_msg[lang], parse_mode="HTML")
         return
-        if text in drinks_triggers:
-            context.user_data["stage"] = "urban_drinks_menu"
-            markup = drinks_markup_ru if lang == "Русский" else drinks_markup_en if lang == "English" else drinks_markup_ee
-            await update.message.reply_text(TEXTS[lang]["drink_menu"], reply_markup=markup, parse_mode="HTML")
-            return
-
-        # --- проверка корректности ввода ---
-        if text not in valid_options:
-            await update.message.reply_text(TEXTS[lang]["order_type"], reply_markup=markup)
-            return
-
-        context.user_data["order_type"] = text
-        context.user_data["stage"] = "order_description"
-
-        await update.message.reply_text(
-            TEXTS[lang]["order_description"],
-            reply_markup=ReplyKeyboardRemove()
-        )
+    
+        
     # --- ЭТАП: Адрес А (Откуда) ---
     elif stage == "order_address_from":
         context.user_data["address_from"] = text
@@ -705,90 +740,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 delivery_sum = price
                 break
         
-        # 3. Расчет суммы товаров для ОБОИХ вариантов
-        items_sum_nal = sum(MENU_PRICES_NAL.get(item, 0) for item in cart)
-        items_sum_bank = sum(MENU_PRICES_BANK.get(item, 0) for item in cart)
+        # 3. Расчет суммы товаров
+        # Используем price_key для поиска цены в словаре цен
+        items_sum_nal = sum(MENU_PRICES_NAL.get(item["price_key"], 0) for item in cart)
+        items_sum_bank = sum(MENU_PRICES_BANK.get(item["price_key"], 0) for item in cart)
 
         total_nal = items_sum_nal + delivery_sum
         total_bank = items_sum_bank + delivery_sum
 
-        # Сохраняем строку с двумя ценами для базы данных
+        # Сохраняем строку для истории/базы
         context.user_data["total_price"] = f"{total_nal}€ (Нал) / {total_bank}€ (Карта)"
 
-        # 4. Собираем список товаров для чека (просто названия)
+        # 4. Формируем список товаров для чека (БЕРЕМ ТОЛЬКО ПОЛЕ 'display')
         cart_details = ""
         if cart:
-            cart_list = "\n".join([f"• {i}" for i in cart])
+            # ВАЖНО: берем i['display'], чтобы не вылетала ошибка TypeError
+            cart_list = "\n".join([f"• {i['display']}" for i in cart])
             cart_details = f"\n{labels['items_header']}\n{cart_list}\n"
 
-        # Текстовка для цен на разных языках
+        # Текстовка для цен
         price_titles = {
             "Русский": f"💵 Наличными: <b>{total_nal}€</b>\n💳 Картой: <b>{total_bank}€</b>",
             "English": f"💵 Cash: <b>{total_nal}€</b>\n💳 Card: <b>{total_bank}€</b>",
             "Eesti": f"💵 Sularahas: <b>{total_nal}€</b>\n💳 Kaardiga: <b>{total_bank}€</b>"
         }
 
+        # 5. Формируем итоговое сообщение (используем labels для перевода полей)
         # 5. Формируем итоговое сообщение
+        # Убираем эмодзи перед labels, так как они уже есть в самих переводах
         order_summary = (
-            f"{labels['title']}\n"
+            f"<b>{labels['title']}</b>\n"
             f"{cart_details}"
             f"-------------------------------\n"
-            f"🚚 {labels['delivery']}: {delivery_sum}€\n\n"
+            f"{labels['delivery']}: {delivery_sum}€\n\n"
             f"{price_titles[lang]}\n"
             f"-------------------------------\n"
-            f"{labels['address']}: {context.user_data['address']}\n"
-            f"{labels['time']}: {context.user_data['time']}\n"
-            f"{labels['phone']}: {context.user_data['phone']}\n"
-            f"{labels['comment']}: {context.user_data['comment']}"
+            f"{labels['address']}: {context.user_data.get('address', '-')}\n"
+            f"{labels['time']}: {context.user_data.get('time', '-')}\n"
+            f"{labels.get('name', '👤 Имя')}: {context.user_data.get('name', '-')}\n"
+            f"{labels['phone']}: {context.user_data.get('phone', '-')}\n"
+            f"{labels['comment']}: {context.user_data.get('comment', '-')}"
         )
 
         markup = confirm_markup_ru if lang == "Русский" else confirm_markup_en if lang == "English" else confirm_markup_ee
+        
         await update.message.reply_text(order_summary, reply_markup=markup, parse_mode="HTML")
-        return
+        return # Завершаем выполнение, нижний дублирующий код не нужен
 
-        # --- мультиязычный summary ---
-        if lang == "Русский":
-            order_summary = (
-                f"📦 Ваш заказ:\n"
-                f"📋 Тип заказа: {context.user_data['order_type']}\n"
-                f"📝 Описание: {context.user_data['description']}\n"
-                f"📍 Адрес: {context.user_data['address']}\n"
-                f"⏰ Время: {context.user_data['time']}\n"
-                f"👤 Имя: {context.user_data['name']}\n"
-                f"📞 Телефон: {context.user_data['phone']}\n"
-                f"💬 Комментарий: {context.user_data['comment']}"
-            )
-            markup = confirm_markup_ru
-
-        elif lang == "English":
-            order_summary = (
-                f"📦 Your order:\n"
-                f"📋 Order type: {context.user_data['order_type']}\n"
-                f"📝 Description: {context.user_data['description']}\n"
-                f"📍 Address: {context.user_data['address']}\n"
-                f"⏰ Time: {context.user_data['time']}\n"
-                f"👤 Name: {context.user_data['name']}\n"
-                f"📞 Phone: {context.user_data['phone']}\n"
-                f"💬 Comment: {context.user_data['comment']}"
-            )
-            markup = confirm_markup_en
-
-        else:  # Eesti
-            order_summary = (
-                f"📦 Sinu tellimus:\n"
-                f"📋 Tüüp: {context.user_data['order_type']}\n"
-                f"📝 Kirjeldus: {context.user_data['description']}\n"
-                f"📍 Aadress: {context.user_data['address']}\n"
-                f"⏰ Aeg: {context.user_data['time']}\n"
-                f"👤 Nimi: {context.user_data['name']}\n"
-                f"📞 Telefon: {context.user_data['phone']}\n"
-                f"💬 Kommentaar: {context.user_data['comment']}"
-            )
-            markup = confirm_markup_ee
-
-        context.user_data["stage"] = "order_confirm"
-
-        await update.message.reply_text(order_summary, reply_markup=markup)
 
     # --- Подтверждение заказа ---
     if stage == "order_confirm":
